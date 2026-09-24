@@ -35,6 +35,7 @@ import com.eddyizm.tempus.databinding.FragmentPlaylistPageBinding;
 import com.eddyizm.tempus.glide.CustomGlideRequest;
 import com.eddyizm.tempus.interfaces.ClickCallback;
 import com.eddyizm.tempus.model.Download;
+import com.eddyizm.tempus.repository.PlaylistRepository;
 import com.eddyizm.tempus.service.MediaManager;
 import com.eddyizm.tempus.subsonic.models.Child;
 import com.eddyizm.tempus.subsonic.models.Playlist;
@@ -49,14 +50,17 @@ import com.eddyizm.tempus.util.ExternalAudioWriter;
 import com.eddyizm.tempus.util.Preferences;
 import com.eddyizm.tempus.viewmodel.PlaybackViewModel;
 import com.eddyizm.tempus.viewmodel.PlaylistPageViewModel;
+import com.eddyizm.tempus.viewmodel.SelectionViewModel;
 import com.eddyizm.tempus.ui.dialog.PlaylistEditorDialog;
 import com.eddyizm.tempus.interfaces.PlaylistCallback;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import kotlin.collections.ArrayDeque;
@@ -67,6 +71,7 @@ public class PlaylistPageFragment extends Fragment implements ClickCallback {
     private MainActivity activity;
     private PlaylistPageViewModel playlistPageViewModel;
     private PlaybackViewModel playbackViewModel;
+    private SelectionViewModel selectionViewModel;
 
     private SongHorizontalAdapter songHorizontalAdapter;
     private androidx.appcompat.app.AlertDialog playlistMissingDialog;
@@ -114,6 +119,7 @@ public class PlaylistPageFragment extends Fragment implements ClickCallback {
         View view = bind.getRoot();
         playlistPageViewModel = new ViewModelProvider(requireActivity()).get(PlaylistPageViewModel.class);
         playbackViewModel = new ViewModelProvider(requireActivity()).get(PlaybackViewModel.class);
+        selectionViewModel = new ViewModelProvider(requireActivity()).get(SelectionViewModel.class);
 
         Bundle args = getArguments();
         Playlist playlistArg = args != null ? args.getParcelable(Constants.PLAYLIST_OBJECT) : null;
@@ -127,23 +133,24 @@ public class PlaylistPageFragment extends Fragment implements ClickCallback {
         initMusicButton();
         initBackCover();
         initSongsView();
-        
+        initSelectionBar();
+
         playlistPageViewModel.getPlaylistMissingEvent().observe(getViewLifecycleOwner(), isMissing -> {
             // One dialog at a time. The event is raised again by a fetch landing after a
             // rotation rebuilt this view, and a second dialog's OK would navigate up twice.
             if (isMissing && getContext() != null && (playlistMissingDialog == null || !playlistMissingDialog.isShowing())) {
                 playlistMissingDialog = new androidx.appcompat.app.AlertDialog.Builder(getContext())
-                    .setTitle(R.string.playlist_error_not_found_title)
-                    .setMessage(R.string.playlist_error_not_found_message)
-                    .setPositiveButton(android.R.string.ok, (dialog, which) -> {
-                        playlistPageViewModel.clearPlaylistMissingEvent();
-                        if (getContext() != null) {
-                            Toast.makeText(getContext(), R.string.playlist_error_not_found_toast, Toast.LENGTH_SHORT).show();
-                        }
-                        if (activity != null && activity.navController != null) activity.navController.navigateUp();
-                    })
-                    .setCancelable(false)
-                    .show();
+                        .setTitle(R.string.playlist_error_not_found_title)
+                        .setMessage(R.string.playlist_error_not_found_message)
+                        .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                            playlistPageViewModel.clearPlaylistMissingEvent();
+                            if (getContext() != null) {
+                                Toast.makeText(getContext(), R.string.playlist_error_not_found_toast, Toast.LENGTH_SHORT).show();
+                            }
+                            if (activity != null && activity.navController != null) activity.navController.navigateUp();
+                        })
+                        .setCancelable(false)
+                        .show();
             }
         });
 
@@ -174,6 +181,7 @@ public class PlaylistPageFragment extends Fragment implements ClickCallback {
 
     @Override
     public void onDestroyView() {
+        selectionViewModel.clearSelection();
         super.onDestroyView();
         if (playlistMissingDialog != null && playlistMissingDialog.isShowing()) playlistMissingDialog.dismiss();
         playlistMissingDialog = null;
@@ -189,13 +197,13 @@ public class PlaylistPageFragment extends Fragment implements ClickCallback {
                 if (isVisible() && getActivity() != null) {
                     if (Preferences.getDownloadDirectoryUri() == null) {
                         DownloadUtil.getDownloadTracker(requireContext()).download(
-                            MappingUtil.mapDownloads(songs),
-                            songs.stream().map(child -> {
-                                Download toDownload = new Download(child);
-                                toDownload.setPlaylistId(_playListID);
-                                toDownload.setPlaylistName(_playListName);
-                                return toDownload;
-                            }).collect(Collectors.toList())
+                                MappingUtil.mapDownloads(songs),
+                                songs.stream().map(child -> {
+                                    Download toDownload = new Download(child);
+                                    toDownload.setPlaylistId(_playListID);
+                                    toDownload.setPlaylistName(_playListName);
+                                    return toDownload;
+                                }).collect(Collectors.toList())
                         );
                     } else {
                         songs.forEach(child -> ExternalAudioWriter.downloadToUserDirectory(requireContext(), child, _playListID, _playListName));
@@ -284,28 +292,28 @@ public class PlaylistPageFragment extends Fragment implements ClickCallback {
     private void initMusicButton() {
 
         playlistPageViewModel.getPlaylistSongLiveList()
-                        .observe(getViewLifecycleOwner(), songs -> {
-                            if (songs != null) {
+                .observe(getViewLifecycleOwner(), songs -> {
+                    if (songs != null) {
 
-                                bind.playlistPagePlayButton.setEnabled(!songs.isEmpty());
-                                bind.playlistPageShuffleButton.setEnabled(!songs.isEmpty());
+                        bind.playlistPagePlayButton.setEnabled(!songs.isEmpty());
+                        bind.playlistPageShuffleButton.setEnabled(!songs.isEmpty());
 
-                                if (bind.songRecyclerViewPlaceholder != null) {
-                                    bind.songRecyclerViewPlaceholder.setVisibility(View.GONE);
-                                }
+                        if (bind.songRecyclerViewPlaceholder != null) {
+                            bind.songRecyclerViewPlaceholder.setVisibility(View.GONE);
+                        }
 
-                                bind.playlistPagePlayButton.setOnClickListener(v -> {
-                                    MediaManager.startQueue(mediaBrowserListenableFuture, songs, 0);
-                                    activity.setBottomSheetInPeek(true);
-                                });
-                                bind.playlistPageShuffleButton.setOnClickListener(v -> {
-                                    List<Child> shuffled = new ArrayList<>(songs);
-                                    Collections.shuffle(shuffled);
-                                    MediaManager.startQueue(mediaBrowserListenableFuture, shuffled, 0);
-                                    activity.setBottomSheetInPeek(true);
-                                });
-                            }
+                        bind.playlistPagePlayButton.setOnClickListener(v -> {
+                            MediaManager.startQueue(mediaBrowserListenableFuture, songs, 0);
+                            activity.setBottomSheetInPeek(true);
                         });
+                        bind.playlistPageShuffleButton.setOnClickListener(v -> {
+                            List<Child> shuffled = new ArrayList<>(songs);
+                            Collections.shuffle(shuffled);
+                            MediaManager.startQueue(mediaBrowserListenableFuture, shuffled, 0);
+                            activity.setBottomSheetInPeek(true);
+                        });
+                    }
+                });
     }
 
     private void initBackCover() {
@@ -517,6 +525,96 @@ public class PlaylistPageFragment extends Fragment implements ClickCallback {
         bundle.putString(Constants.PLAYLIST_ID, playlistPageViewModel.getPlaylist().getId());
         bundle.putString(Constants.PLAYLIST_NAME, playlistPageViewModel.getPlaylist().getName());
         Navigation.findNavController(requireView()).navigate(R.id.songBottomSheetDialog, bundle);
+    }
+
+    @Override
+    public void onSongSelectionToggle(Bundle bundle) {
+        Child song = bundle.getParcelable(Constants.TRACK_OBJECT);
+        if (song != null) {
+            selectionViewModel.toggle(song.getId());
+        }
+    }
+
+    private void initSelectionBar() {
+        bind.selectionCancelTextView.setOnClickListener(v -> selectionViewModel.clearSelection());
+        bind.selectionRemoveTextView.setOnClickListener(v -> removeSelectedFromPlaylist());
+
+        selectionViewModel.getSelectionModeActive().observe(getViewLifecycleOwner(), active -> {
+            if (bind == null) return;
+            boolean isActive = Boolean.TRUE.equals(active);
+            bind.animToolbar.setVisibility(isActive ? View.GONE : View.VISIBLE);
+            bind.selectionToolbar.setVisibility(isActive ? View.VISIBLE : View.GONE);
+            if (songHorizontalAdapter != null) {
+                songHorizontalAdapter.setSelectionState(isActive, selectionViewModel.currentSelection());
+            }
+        });
+
+        selectionViewModel.getSelectedIds().observe(getViewLifecycleOwner(), ids -> {
+            if (bind == null) return;
+            LinkedHashSet<String> selected = ids != null ? ids : new LinkedHashSet<>();
+            bind.selectionCountTextView.setText(getString(R.string.selection_toolbar_count, selected.size()));
+            if (songHorizontalAdapter != null) {
+                boolean isActive = Boolean.TRUE.equals(selectionViewModel.getSelectionModeActive().getValue());
+                songHorizontalAdapter.setSelectionState(isActive, selected);
+            }
+        });
+    }
+
+    /**
+     * Resolves each selected song back to its position in the playlist's full, unfiltered list by
+     * object reference — same technique onMediaLongClick above already uses — since the adapter
+     * may be showing a search-narrowed subset, and a playlist can hold the same song twice. If a
+     * selected song appears more than once, every occurrence of it is removed.
+     */
+    private List<Integer> resolveSelectedIndexes() {
+        List<Integer> indexes = new ArrayList<>();
+        if (songHorizontalAdapter == null) return indexes;
+
+        List<Child> selectedSongs = songHorizontalAdapter.getItemsByIds(selectionViewModel.currentSelection());
+        List<Child> fullList = playlistPageViewModel.getPlaylistSongLiveList().getValue();
+        if (selectedSongs.isEmpty() || fullList == null) return indexes;
+
+        for (Child selected : selectedSongs) {
+            for (int i = 0; i < fullList.size(); i++) {
+                if (fullList.get(i) == selected) {
+                    indexes.add(i);
+                }
+            }
+        }
+        return indexes;
+    }
+
+    private void removeSelectedFromPlaylist() {
+        if (playlistPageViewModel.isWriting()) {
+            Toast.makeText(requireContext(), R.string.playlist_error_write_in_progress, Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        List<Integer> indexes = resolveSelectedIndexes();
+        if (indexes.isEmpty()) return;
+
+        String playlistId = playlistPageViewModel.getPlaylist().getId();
+        int count = indexes.size();
+
+        selectionViewModel.clearSelection();
+
+        playlistPageViewModel.removeSongs(playlistId, indexes, new PlaylistRepository.AddToPlaylistCallback() {
+            @Override
+            public void onSuccess() {
+                if (getContext() == null) return;
+                Toast.makeText(getContext(), getString(R.string.playlist_removed_songs_toast, count), Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
+            public void onFailure() {
+                if (getContext() == null) return;
+                Toast.makeText(getContext(), R.string.playlist_chooser_dialog_toast_remove_failure, Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
+            public void onAllSkipped() {
+            }
+        });
     }
 
     private void observePlayback() {

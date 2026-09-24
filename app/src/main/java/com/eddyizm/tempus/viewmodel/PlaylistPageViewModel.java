@@ -16,6 +16,7 @@ import com.eddyizm.tempus.subsonic.models.Child;
 import com.eddyizm.tempus.subsonic.models.Playlist;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 @UnstableApi
@@ -143,6 +144,71 @@ public class PlaylistPageViewModel extends AndroidViewModel {
                     current = new ArrayList<>(shorter);
                     current.add(index, removed);
                     songLiveList.setValue(current);
+                }
+                reconcileSongs(playlistId, true);
+                callback.onFailure();
+            }
+
+            @Override
+            public void onAllSkipped() {
+                writingPlaylistId = null;
+                callback.onAllSkipped();
+            }
+        });
+    }
+
+    /**
+     * Batch version of removeSong: removes several positions in one write instead of one call per
+     * song, since only one write can be in flight at a time and a run of single removals would
+     * otherwise have to be serialized and would race the index shifting as each one lands.
+     * <p>
+     * Unlike removeSong, this doesn't attempt the same-list fast path reconciliation on a
+     * concurrent read landing mid-write — with several indices moving at once that gets a lot
+     * harder to get right, so any conflicting update here just triggers a full reconcileSongs
+     * instead of trying to patch the optimistic list in place.
+     */
+    public void removeSongs(String playlistId, List<Integer> indexes, PlaylistRepository.AddToPlaylistCallback callback) {
+        List<Child> songs = songLiveList.getValue();
+        if (writingPlaylistId != null || playlist == null || !playlist.getId().equals(playlistId)
+                || songs == null || indexes == null || indexes.isEmpty()) {
+            callback.onFailure();
+            return;
+        }
+
+        List<Integer> descending = new ArrayList<>(indexes);
+        Collections.sort(descending, Collections.reverseOrder());
+        for (int index : descending) {
+            if (index < 0 || index >= songs.size()) {
+                callback.onFailure();
+                return;
+            }
+        }
+
+        writingPlaylistId = playlistId;
+        publishedSequence = ++fetchSequence;
+        List<Child> shorter = new ArrayList<>(songs);
+        for (int index : descending) {
+            shorter.remove(index);
+        }
+        songLiveList.setValue(shorter);
+
+        playlistRepository.removeSongsFromPlaylist(playlistId, new ArrayList<>(indexes), new PlaylistRepository.AddToPlaylistCallback() {
+            @Override
+            public void onSuccess() {
+                List<Child> current = songLiveList.getValue();
+                if (current == shorter || playlist == null || !playlist.getId().equals(playlistId)) {
+                    writingPlaylistId = null;
+                } else {
+                    reconcileSongs(playlistId, true);
+                }
+                callback.onSuccess();
+            }
+
+            @Override
+            public void onFailure() {
+                List<Child> current = songLiveList.getValue();
+                if (current == shorter) {
+                    songLiveList.setValue(songs);
                 }
                 reconcileSongs(playlistId, true);
                 callback.onFailure();

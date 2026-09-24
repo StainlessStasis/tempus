@@ -54,7 +54,7 @@ public class PlaylistRepository {
             playlistSongDao.deleteForPlaylist(id);
             pinnedPlaylistDao.unpin(id);
             playlistDao.deleteById(id);
-            
+
             if (onMissing != null) {
                 new Handler(Looper.getMainLooper()).post(onMissing);
             }
@@ -93,7 +93,7 @@ public class PlaylistRepository {
 
                     @Override
                     public void onFailure(@NonNull Call<ApiResponse> call, @NonNull Throwable t) {
-                    // OFFLINE MILESTONE: Future home of the "Server unreachable, falling back to cache" Toast
+                        // OFFLINE MILESTONE: Future home of the "Server unreachable, falling back to cache" Toast
                     }
                 });
     }
@@ -396,6 +396,39 @@ public class PlaylistRepository {
     public void removeSongFromPlaylist(String playlistId, int index, AddToPlaylistCallback callback) {
         ArrayList<Integer> indexes = new ArrayList<>();
         indexes.add(index);
+        new Thread(() -> {
+            App.getSubsonicClientInstance(false)
+                    .getPlaylistClient()
+                    .updatePlaylist(playlistId, null, visibilityToSend(playlistId), null, indexes)
+                    .enqueue(new Callback<ApiResponse>() {
+                        @Override
+                        public void onResponse(@NonNull Call<ApiResponse> call, @NonNull Response<ApiResponse> response) {
+                            if (isAccepted(response)) notifyPlaylistChanged();
+                            if (callback != null) {
+                                if (isAccepted(response)) callback.onSuccess();
+                                else callback.onFailure();
+                            }
+                        }
+
+                        @Override
+                        public void onFailure(@NonNull Call<ApiResponse> call, @NonNull Throwable t) {
+                            if (callback != null) callback.onFailure();
+                        }
+                    });
+        }).start();
+    }
+
+    /**
+     * Removes several positions from a playlist in one write. The indices must refer to the
+     * playlist's state before any of them are removed — updatePlaylist removes all of them
+     * against that original ordering in a single server-side operation, not one at a time, so
+     * there's no need to sort or offset them here.
+     */
+    public void removeSongsFromPlaylist(String playlistId, ArrayList<Integer> indexes, AddToPlaylistCallback callback) {
+        if (indexes.isEmpty()) {
+            if (callback != null) callback.onAllSkipped();
+            return;
+        }
         new Thread(() -> {
             App.getSubsonicClientInstance(false)
                     .getPlaylistClient()
