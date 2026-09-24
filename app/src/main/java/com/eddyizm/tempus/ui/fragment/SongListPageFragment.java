@@ -36,12 +36,16 @@ import com.eddyizm.tempus.service.MediaService;
 import com.eddyizm.tempus.subsonic.models.Child;
 import com.eddyizm.tempus.ui.activity.MainActivity;
 import com.eddyizm.tempus.ui.adapter.SongHorizontalAdapter;
+import com.eddyizm.tempus.ui.dialog.PlaylistChooserDialog;
 import com.eddyizm.tempus.util.Constants;
 import com.eddyizm.tempus.viewmodel.PlaybackViewModel;
+import com.eddyizm.tempus.viewmodel.SelectionViewModel;
 import com.eddyizm.tempus.viewmodel.SongListPageViewModel;
 import com.google.common.util.concurrent.ListenableFuture;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 @UnstableApi
@@ -52,6 +56,7 @@ public class SongListPageFragment extends Fragment implements ClickCallback {
     private MainActivity activity;
     private SongListPageViewModel songListPageViewModel;
     private PlaybackViewModel playbackViewModel;
+    private SelectionViewModel selectionViewModel;
 
     private SongHorizontalAdapter songHorizontalAdapter;
 
@@ -73,6 +78,7 @@ public class SongListPageFragment extends Fragment implements ClickCallback {
         View view = bind.getRoot();
         songListPageViewModel = new ViewModelProvider(requireActivity()).get(SongListPageViewModel.class);
         playbackViewModel = new ViewModelProvider(requireActivity()).get(PlaybackViewModel.class);
+        selectionViewModel = new ViewModelProvider(requireActivity()).get(SelectionViewModel.class);
 
         Bundle args = getArguments();
         if (args == null) {
@@ -85,6 +91,7 @@ public class SongListPageFragment extends Fragment implements ClickCallback {
         initButtons();
         initSongListView();
         initSwipeToRefresh();
+        initSelectionBar();
 
         return view;
     }
@@ -112,6 +119,7 @@ public class SongListPageFragment extends Fragment implements ClickCallback {
 
     @Override
     public void onDestroyView() {
+        selectionViewModel.clearSelection();
         super.onDestroyView();
         bind = null;
     }
@@ -348,6 +356,53 @@ public class SongListPageFragment extends Fragment implements ClickCallback {
     @Override
     public void onMediaLongClick(Bundle bundle) {
         Navigation.findNavController(requireView()).navigate(R.id.songBottomSheetDialog, bundle);
+    }
+
+    @Override
+    public void onSongSelectionToggle(Bundle bundle) {
+        Child song = bundle.getParcelable(Constants.TRACK_OBJECT);
+        if (song != null) {
+            selectionViewModel.toggle(song.getId());
+        }
+    }
+
+    private void initSelectionBar() {
+        bind.selectionCancelTextView.setOnClickListener(v -> selectionViewModel.clearSelection());
+        bind.selectionAddToPlaylistTextView.setOnClickListener(v -> addSelectedToPlaylist());
+
+        selectionViewModel.getSelectionModeActive().observe(getViewLifecycleOwner(), active -> {
+            if (bind == null) return;
+            boolean isActive = Boolean.TRUE.equals(active);
+            bind.toolbar.setVisibility(isActive ? View.GONE : View.VISIBLE);
+            bind.selectionToolbar.setVisibility(isActive ? View.VISIBLE : View.GONE);
+            if (songHorizontalAdapter != null) {
+                songHorizontalAdapter.setSelectionState(isActive, selectionViewModel.currentSelection());
+            }
+        });
+
+        selectionViewModel.getSelectedIds().observe(getViewLifecycleOwner(), ids -> {
+            if (bind == null) return;
+            LinkedHashSet<String> selected = ids != null ? ids : new LinkedHashSet<>();
+            bind.selectionCountTextView.setText(getString(R.string.selection_toolbar_count, selected.size()));
+            if (songHorizontalAdapter != null) {
+                boolean isActive = Boolean.TRUE.equals(selectionViewModel.getSelectionModeActive().getValue());
+                songHorizontalAdapter.setSelectionState(isActive, selected);
+            }
+        });
+    }
+
+    private void addSelectedToPlaylist() {
+        List<Child> songs = songHorizontalAdapter.getItemsByIds(selectionViewModel.currentSelection());
+        if (songs.isEmpty()) return;
+
+        Bundle bundle = new Bundle();
+        bundle.putParcelableArrayList(Constants.TRACKS_OBJECT, new ArrayList<>(songs));
+
+        PlaylistChooserDialog dialog = new PlaylistChooserDialog();
+        dialog.setArguments(bundle);
+        dialog.show(requireActivity().getSupportFragmentManager(), null);
+
+        selectionViewModel.clearSelection();
     }
 
     private void observePlayback() {

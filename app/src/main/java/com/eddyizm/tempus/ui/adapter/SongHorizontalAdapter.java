@@ -40,6 +40,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
 @UnstableApi
@@ -68,6 +69,9 @@ public class SongHorizontalAdapter extends RecyclerView.Adapter<SongHorizontalAd
     private boolean isPlaying;
     private List<Integer> currentPlayingPositions = Collections.emptyList();
     private ListenableFuture<MediaBrowser> mediaBrowserListenableFuture;
+
+    private boolean selectionMode = false;
+    private Set<String> selectedIds = Collections.emptySet();
 
     private final Filter filtering = new Filter() {
         @Override
@@ -129,8 +133,14 @@ public class SongHorizontalAdapter extends RecyclerView.Adapter<SongHorizontalAd
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position, @NonNull List<Object> payloads) {
-        if (!payloads.isEmpty() && payloads.contains("payload_playback")) {
-            bindPlaybackState(holder, differ.getCurrentList().get(position));
+        if (!payloads.isEmpty() && (payloads.contains("payload_playback") || payloads.contains("payload_selection"))) {
+            Child song = differ.getCurrentList().get(position);
+            if (payloads.contains("payload_playback")) {
+                bindPlaybackState(holder, song);
+            }
+            if (payloads.contains("payload_selection")) {
+                bindSelectionState(holder, song);
+            }
         } else {
             super.onBindViewHolder(holder, position, payloads);
         }
@@ -226,6 +236,12 @@ public class SongHorizontalAdapter extends RecyclerView.Adapter<SongHorizontalAd
         }
 
         bindPlaybackState(holder, song);
+        bindSelectionState(holder, song);
+    }
+
+    private void bindSelectionState(@NonNull ViewHolder holder, @NonNull Child song) {
+        holder.item.selectionCheckbox.setVisibility(selectionMode ? View.VISIBLE : View.GONE);
+        holder.item.selectionCheckbox.setChecked(selectedIds.contains(song.getId()));
     }
 
     private void handleExternalAudioRefresh() {
@@ -274,6 +290,29 @@ public class SongHorizontalAdapter extends RecyclerView.Adapter<SongHorizontalAd
     public void setItems(List<Child> songs) {
         this.songsFull = songs != null ? songs : Collections.emptyList();
         filtering.filter(currentFilter);
+    }
+
+    /** Pushed in by the observing fragment whenever SelectionViewModel's state changes. */
+    public void setSelectionState(boolean active, Set<String> selectedIds) {
+        this.selectionMode = active;
+        this.selectedIds = selectedIds != null ? selectedIds : Collections.emptySet();
+        notifyItemRangeChanged(0, getItemCount(), "payload_selection");
+    }
+
+    public boolean isSelectionMode() {
+        return selectionMode;
+    }
+
+    /** Resolves a set of selected song ids back to the full Child objects, for "Add to playlist". */
+    public List<Child> getItemsByIds(Set<String> ids) {
+        List<Child> result = new ArrayList<>();
+        if (ids == null || ids.isEmpty()) return result;
+        for (Child song : differ.getCurrentList()) {
+            if (ids.contains(song.getId())) {
+                result.add(song);
+            }
+        }
+        return result;
     }
 
     @Override
@@ -350,6 +389,13 @@ public class SongHorizontalAdapter extends RecyclerView.Adapter<SongHorizontalAd
         public void onClick() {
             int pos = getBindingAdapterPosition();
             Child tappedSong = differ.getCurrentList().get(pos);
+
+            if (selectionMode) {
+                Bundle selectionBundle = new Bundle();
+                selectionBundle.putParcelable(Constants.TRACK_OBJECT, tappedSong);
+                click.onSongSelectionToggle(selectionBundle);
+                return;
+            }
 
             Bundle bundle = new Bundle();
             bundle.putParcelableArrayList(Constants.TRACKS_OBJECT, new ArrayList<>(MusicUtil.limitPlayableMedia(differ.getCurrentList(), getBindingAdapterPosition())));

@@ -32,6 +32,7 @@ import com.eddyizm.tempus.glide.CustomGlideRequest;
 import com.eddyizm.tempus.interfaces.ClickCallback;
 import com.eddyizm.tempus.model.Download;
 import com.eddyizm.tempus.subsonic.models.AlbumID3;
+import com.eddyizm.tempus.subsonic.models.Child;
 import com.eddyizm.tempus.service.MediaManager;
 import com.eddyizm.tempus.service.MediaService;
 import com.eddyizm.tempus.ui.activity.MainActivity;
@@ -47,11 +48,14 @@ import com.eddyizm.tempus.util.ExternalAudioWriter;
 import com.eddyizm.tempus.util.Preferences;
 import com.eddyizm.tempus.viewmodel.AlbumPageViewModel;
 import com.eddyizm.tempus.viewmodel.PlaybackViewModel;
+import com.eddyizm.tempus.viewmodel.SelectionViewModel;
 import com.eddyizm.tempus.util.FavoriteRegistry;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -61,6 +65,7 @@ public class AlbumPageFragment extends Fragment implements ClickCallback {
     private MainActivity activity;
     private AlbumPageViewModel albumPageViewModel;
     private PlaybackViewModel playbackViewModel;
+    private SelectionViewModel selectionViewModel;
     private SongHorizontalAdapter songHorizontalAdapter;
     private ListenableFuture<MediaBrowser> mediaBrowserListenableFuture;
 
@@ -87,6 +92,7 @@ public class AlbumPageFragment extends Fragment implements ClickCallback {
 
         albumPageViewModel = new ViewModelProvider(requireActivity()).get(AlbumPageViewModel.class);
         playbackViewModel = new ViewModelProvider(requireActivity()).get(PlaybackViewModel.class);
+        selectionViewModel = new ViewModelProvider(requireActivity()).get(SelectionViewModel.class);
 
         Bundle args = getArguments();
         if (args == null) {
@@ -108,6 +114,7 @@ public class AlbumPageFragment extends Fragment implements ClickCallback {
         initMusicButton();
         initBackCover();
         initSongsView();
+        initSelectionBar();
 
         return view;
     }
@@ -135,29 +142,30 @@ public class AlbumPageFragment extends Fragment implements ClickCallback {
 
     @Override
     public void onDestroyView() {
+        selectionViewModel.clearSelection();
         super.onDestroyView();
         bind = null;
     }
 
-        /** @noinspection deprecation*/
-        @Override
-        public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-            if (item.getItemId() == R.id.action_rate_album) {
-                Bundle bundle = new Bundle();
-                AlbumID3 album = albumPageViewModel.getAlbum().getValue();
-                bundle.putParcelable(Constants.ALBUM_OBJECT, album.strippedForNav());
-                RatingDialog dialog = new RatingDialog();
-                dialog.setArguments(bundle);
-                dialog.show(requireActivity().getSupportFragmentManager(), null);
-                return true;
-            }
+    /** @noinspection deprecation*/
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.action_rate_album) {
+            Bundle bundle = new Bundle();
+            AlbumID3 album = albumPageViewModel.getAlbum().getValue();
+            bundle.putParcelable(Constants.ALBUM_OBJECT, album.strippedForNav());
+            RatingDialog dialog = new RatingDialog();
+            dialog.setArguments(bundle);
+            dialog.show(requireActivity().getSupportFragmentManager(), null);
+            return true;
+        }
 
         if (item.getItemId() == R.id.action_download_album) {
             albumPageViewModel.getAlbumSongLiveList().observe(getViewLifecycleOwner(), songs -> {
                 if (Preferences.getDownloadDirectoryUri() == null) {
                     DownloadUtil.getDownloadTracker(requireContext()).download(
-                        MappingUtil.mapDownloads(songs),
-                        songs.stream().map(Download::new).collect(Collectors.toList())
+                            MappingUtil.mapDownloads(songs),
+                            songs.stream().map(Download::new).collect(Collectors.toList())
                     );
                 } else {
                     songs.forEach(child -> ExternalAudioWriter.downloadToUserDirectory(requireContext(), child));
@@ -413,6 +421,54 @@ public class AlbumPageFragment extends Fragment implements ClickCallback {
     @Override
     public void onMediaLongClick(Bundle bundle) {
         Navigation.findNavController(requireView()).navigate(R.id.songBottomSheetDialog, bundle);
+    }
+
+    @Override
+    public void onSongSelectionToggle(Bundle bundle) {
+        Child song = bundle.getParcelable(Constants.TRACK_OBJECT);
+        if (song != null) {
+            selectionViewModel.toggle(song.getId());
+        }
+    }
+
+    private void initSelectionBar() {
+        bind.selectionCancelTextView.setOnClickListener(v -> selectionViewModel.clearSelection());
+        bind.selectionAddToPlaylistTextView.setOnClickListener(v -> addSelectedToPlaylist());
+
+        selectionViewModel.getSelectionModeActive().observe(getViewLifecycleOwner(), active -> {
+            if (bind == null) return;
+            boolean isActive = Boolean.TRUE.equals(active);
+            bind.animToolbar.setVisibility(isActive ? View.GONE : View.VISIBLE);
+            bind.selectionToolbar.setVisibility(isActive ? View.VISIBLE : View.GONE);
+            if (songHorizontalAdapter != null) {
+                songHorizontalAdapter.setSelectionState(isActive, selectionViewModel.currentSelection());
+            }
+        });
+
+        selectionViewModel.getSelectedIds().observe(getViewLifecycleOwner(), ids -> {
+            if (bind == null) return;
+            LinkedHashSet<String> selected = ids != null ? ids : new LinkedHashSet<>();
+            bind.selectionCountTextView.setText(getString(R.string.selection_toolbar_count, selected.size()));
+            if (songHorizontalAdapter != null) {
+                boolean isActive = Boolean.TRUE.equals(selectionViewModel.getSelectionModeActive().getValue());
+                songHorizontalAdapter.setSelectionState(isActive, selected);
+            }
+        });
+    }
+
+    private void addSelectedToPlaylist() {
+        if (songHorizontalAdapter == null) return;
+        List<Child> songs = songHorizontalAdapter.getItemsByIds(selectionViewModel.currentSelection());
+        if (songs.isEmpty()) return;
+
+        Bundle bundle = new Bundle();
+        bundle.putParcelableArrayList(Constants.TRACKS_OBJECT, new ArrayList<>(songs));
+
+        PlaylistChooserDialog dialog = new PlaylistChooserDialog();
+        dialog.setArguments(bundle);
+        dialog.show(requireActivity().getSupportFragmentManager(), null);
+
+        selectionViewModel.clearSelection();
     }
 
     private void observePlayback() {

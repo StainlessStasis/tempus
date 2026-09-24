@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical">
@@ -12,6 +13,48 @@
         android:background="?attr/colorSurface"
         app:layout_collapseMode="pin"
         app:navigationIcon="@drawable/ic_arrow_back" />
+
+    <LinearLayout
+        android:id="@+id/selection_toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorSurface"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="4dp"
+        android:paddingEnd="16dp"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <TextView
+            android:id="@+id/selection_cancel_text_view"
+            style="@style/LabelMedium"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:padding="12dp"
+            android:text="@string/selection_toolbar_cancel" />
+
+        <TextView
+            android:id="@+id/selection_count_text_view"
+            style="@style/LabelMedium"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="@string/label_placeholder" />
+
+        <TextView
+            android:id="@+id/selection_add_to_playlist_text_view"
+            style="@style/LabelMedium"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:padding="12dp"
+            android:text="@string/song_bottom_sheet_add_to_playlist" />
+    </LinearLayout>
 
     <androidx.coordinatorlayout.widget.CoordinatorLayout
         android:layout_width="match_parent"
@@ -101,17 +144,16 @@
             android:layout_height="match_parent"
             app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/song_list_recycler_view"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:clipToPadding="false"
-            android:paddingTop="12dp"
-            android:paddingBottom="@dimen/global_padding_bottom"
-            app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/song_list_recycler_view"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:paddingTop="12dp"
+                android:paddingBottom="@dimen/global_padding_bottom"
+                app:layout_behavior="@string/appbar_scrolling_view_behavior" />
 
         </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
     </androidx.coordinatorlayout.widget.CoordinatorLayout>
 </LinearLayout>
-

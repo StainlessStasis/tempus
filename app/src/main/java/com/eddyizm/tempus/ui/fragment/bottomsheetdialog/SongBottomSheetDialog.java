@@ -41,6 +41,7 @@ import com.eddyizm.tempus.util.MusicUtil;
 import com.eddyizm.tempus.util.Preferences;
 import com.eddyizm.tempus.viewmodel.HomeViewModel;
 import com.eddyizm.tempus.viewmodel.PlaylistPageViewModel;
+import com.eddyizm.tempus.viewmodel.SelectionViewModel;
 import com.eddyizm.tempus.viewmodel.SongBottomSheetViewModel;
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment;
 import com.google.android.material.chip.Chip;
@@ -191,6 +192,13 @@ public class SongBottomSheetDialog extends BottomSheetDialogFragment implements 
         addToQueue.setOnClickListener(v -> {
             MediaManager.enqueue(mediaBrowserListenableFuture, song, false);
             ((MainActivity) requireActivity()).setBottomSheetInPeek(true);
+            dismissBottomSheet();
+        });
+
+        TextView select = view.findViewById(R.id.select_text_view);
+        select.setOnClickListener(v -> {
+            SelectionViewModel selectionViewModel = new ViewModelProvider(requireActivity()).get(SelectionViewModel.class);
+            selectionViewModel.startSelection(song.getId());
             dismissBottomSheet();
         });
 

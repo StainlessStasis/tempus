@@ -35,4 +35,5 @@ public interface ClickCallback {
     default void onDownloadGroupLongClick(Bundle bundle) {}
     default void onShareClick(Bundle bundle) {}
     default void onShareLongClick(Bundle bundle) {}
+    default void onSongSelectionToggle(Bundle bundle) {}
 }

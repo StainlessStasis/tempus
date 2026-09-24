@@ -652,6 +652,9 @@
     <string name="song_bottom_sheet_undo">Undo</string>
     <string name="song_bottom_sheet_undo_failure">Failed to put the song back</string>
     <string name="song_bottom_sheet_share">Share</string>
+    <string name="song_bottom_sheet_select">Select</string>
+    <string name="selection_toolbar_cancel">Cancel</string>
+    <string name="selection_toolbar_count">%1$d selected</string>
     <string name="song_list_page_downloaded">Downloaded</string>
     <string name="song_list_page_most_played">Most played tracks</string>
     <string name="song_list_page_recently_added">Recently added tracks</string>
