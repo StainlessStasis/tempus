@@ -147,25 +147,25 @@ public class AlbumPageFragment extends Fragment implements ClickCallback {
         bind = null;
     }
 
-    /** @noinspection deprecation*/
-    @Override
-    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        if (item.getItemId() == R.id.action_rate_album) {
-            Bundle bundle = new Bundle();
-            AlbumID3 album = albumPageViewModel.getAlbum().getValue();
-            bundle.putParcelable(Constants.ALBUM_OBJECT, album.strippedForNav());
-            RatingDialog dialog = new RatingDialog();
-            dialog.setArguments(bundle);
-            dialog.show(requireActivity().getSupportFragmentManager(), null);
-            return true;
-        }
+        /** @noinspection deprecation*/
+        @Override
+        public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+            if (item.getItemId() == R.id.action_rate_album) {
+                Bundle bundle = new Bundle();
+                AlbumID3 album = albumPageViewModel.getAlbum().getValue();
+                bundle.putParcelable(Constants.ALBUM_OBJECT, album.strippedForNav());
+                RatingDialog dialog = new RatingDialog();
+                dialog.setArguments(bundle);
+                dialog.show(requireActivity().getSupportFragmentManager(), null);
+                return true;
+            }
 
         if (item.getItemId() == R.id.action_download_album) {
             albumPageViewModel.getAlbumSongLiveList().observe(getViewLifecycleOwner(), songs -> {
                 if (Preferences.getDownloadDirectoryUri() == null) {
                     DownloadUtil.getDownloadTracker(requireContext()).download(
-                            MappingUtil.mapDownloads(songs),
-                            songs.stream().map(Download::new).collect(Collectors.toList())
+                        MappingUtil.mapDownloads(songs),
+                        songs.stream().map(Download::new).collect(Collectors.toList())
                     );
                 } else {
                     songs.forEach(child -> ExternalAudioWriter.downloadToUserDirectory(requireContext(), child));
