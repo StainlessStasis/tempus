@@ -315,6 +315,15 @@ public class SongHorizontalAdapter extends RecyclerView.Adapter<SongHorizontalAd
         return result;
     }
 
+    /** Every song id currently visible (i.e. after any active search filter), for "Select all". */
+    public List<String> getAllVisibleIds() {
+        List<String> ids = new ArrayList<>();
+        for (Child song : differ.getCurrentList()) {
+            ids.add(song.getId());
+        }
+        return ids;
+    }
+
     @Override
     public long getItemId(int position) {
         return position;

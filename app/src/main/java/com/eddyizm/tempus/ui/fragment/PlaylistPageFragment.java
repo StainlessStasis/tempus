@@ -537,6 +537,7 @@ public class PlaylistPageFragment extends Fragment implements ClickCallback {
 
     private void initSelectionBar() {
         bind.selectionCancelTextView.setOnClickListener(v -> selectionViewModel.clearSelection());
+        bind.selectionSelectAllTextView.setOnClickListener(v -> toggleSelectAll());
         bind.selectionRemoveTextView.setOnClickListener(v -> removeSelectedFromPlaylist());
 
         selectionViewModel.getSelectionModeActive().observe(getViewLifecycleOwner(), active -> {
@@ -553,11 +554,32 @@ public class PlaylistPageFragment extends Fragment implements ClickCallback {
             if (bind == null) return;
             LinkedHashSet<String> selected = ids != null ? ids : new LinkedHashSet<>();
             bind.selectionCountTextView.setText(getString(R.string.selection_toolbar_count, selected.size()));
+            updateSelectAllLabel(selected);
             if (songHorizontalAdapter != null) {
                 boolean isActive = Boolean.TRUE.equals(selectionViewModel.getSelectionModeActive().getValue());
                 songHorizontalAdapter.setSelectionState(isActive, selected);
             }
         });
+    }
+
+    private void updateSelectAllLabel(Set<String> selected) {
+        if (bind == null || songHorizontalAdapter == null) return;
+        List<String> allIds = songHorizontalAdapter.getAllVisibleIds();
+        boolean allSelected = !allIds.isEmpty() && selected.containsAll(allIds);
+        bind.selectionSelectAllTextView.setText(allSelected
+                ? R.string.selection_toolbar_deselect_all
+                : R.string.selection_toolbar_select_all);
+    }
+
+    private void toggleSelectAll() {
+        if (songHorizontalAdapter == null) return;
+        List<String> allIds = songHorizontalAdapter.getAllVisibleIds();
+        Set<String> current = selectionViewModel.currentSelection();
+        if (!allIds.isEmpty() && current.containsAll(allIds)) {
+            selectionViewModel.deselectAll();
+        } else {
+            selectionViewModel.selectAll(allIds);
+        }
     }
 
     /**

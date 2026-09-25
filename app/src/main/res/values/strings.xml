@@ -656,6 +656,8 @@
     <string name="selection_toolbar_cancel">Cancel</string>
     <string name="selection_toolbar_count">%1$d selected</string>
     <string name="selection_toolbar_remove_from_playlist">Remove from playlist</string>
+    <string name="selection_toolbar_select_all">Select all</string>
+    <string name="selection_toolbar_deselect_all">Deselect all</string>
     <string name="playlist_removed_songs_toast">Removed %1$d song(s) from playlist</string>
     <string name="playlist_error_write_in_progress">Still working on the last change — try again in a moment</string>
     <string name="song_list_page_downloaded">Downloaded</string>

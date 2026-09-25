@@ -63,6 +63,22 @@ public class SelectionViewModel extends ViewModel {
         selectedIds.setValue(new LinkedHashSet<>());
     }
 
+    /** Selects every id given (typically every song currently visible in the list). */
+    public void selectAll(java.util.Collection<String> ids) {
+        if (ids == null) return;
+        selectedIds.setValue(new LinkedHashSet<>(ids));
+        selectionModeActive.setValue(true);
+    }
+
+    /**
+     * Empties the selection but, unlike clearSelection/Cancel, leaves selection mode active — this
+     * is a deliberate "start over" action, not the same as unchecking the last box (which exits
+     * selection mode automatically in toggle() above).
+     */
+    public void deselectAll() {
+        selectedIds.setValue(new LinkedHashSet<>());
+    }
+
     public Set<String> currentSelection() {
         LinkedHashSet<String> ids = selectedIds.getValue();
         return ids != null ? ids : new LinkedHashSet<>();

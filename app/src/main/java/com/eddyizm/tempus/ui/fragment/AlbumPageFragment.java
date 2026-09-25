@@ -57,6 +57,7 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @UnstableApi
@@ -147,25 +148,25 @@ public class AlbumPageFragment extends Fragment implements ClickCallback {
         bind = null;
     }
 
-        /** @noinspection deprecation*/
-        @Override
-        public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-            if (item.getItemId() == R.id.action_rate_album) {
-                Bundle bundle = new Bundle();
-                AlbumID3 album = albumPageViewModel.getAlbum().getValue();
-                bundle.putParcelable(Constants.ALBUM_OBJECT, album.strippedForNav());
-                RatingDialog dialog = new RatingDialog();
-                dialog.setArguments(bundle);
-                dialog.show(requireActivity().getSupportFragmentManager(), null);
-                return true;
-            }
+    /** @noinspection deprecation*/
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.action_rate_album) {
+            Bundle bundle = new Bundle();
+            AlbumID3 album = albumPageViewModel.getAlbum().getValue();
+            bundle.putParcelable(Constants.ALBUM_OBJECT, album.strippedForNav());
+            RatingDialog dialog = new RatingDialog();
+            dialog.setArguments(bundle);
+            dialog.show(requireActivity().getSupportFragmentManager(), null);
+            return true;
+        }
 
         if (item.getItemId() == R.id.action_download_album) {
             albumPageViewModel.getAlbumSongLiveList().observe(getViewLifecycleOwner(), songs -> {
                 if (Preferences.getDownloadDirectoryUri() == null) {
                     DownloadUtil.getDownloadTracker(requireContext()).download(
-                        MappingUtil.mapDownloads(songs),
-                        songs.stream().map(Download::new).collect(Collectors.toList())
+                            MappingUtil.mapDownloads(songs),
+                            songs.stream().map(Download::new).collect(Collectors.toList())
                     );
                 } else {
                     songs.forEach(child -> ExternalAudioWriter.downloadToUserDirectory(requireContext(), child));
@@ -433,6 +434,7 @@ public class AlbumPageFragment extends Fragment implements ClickCallback {
 
     private void initSelectionBar() {
         bind.selectionCancelTextView.setOnClickListener(v -> selectionViewModel.clearSelection());
+        bind.selectionSelectAllTextView.setOnClickListener(v -> toggleSelectAll());
         bind.selectionAddToPlaylistTextView.setOnClickListener(v -> addSelectedToPlaylist());
 
         selectionViewModel.getSelectionModeActive().observe(getViewLifecycleOwner(), active -> {
@@ -449,11 +451,32 @@ public class AlbumPageFragment extends Fragment implements ClickCallback {
             if (bind == null) return;
             LinkedHashSet<String> selected = ids != null ? ids : new LinkedHashSet<>();
             bind.selectionCountTextView.setText(getString(R.string.selection_toolbar_count, selected.size()));
+            updateSelectAllLabel(selected);
             if (songHorizontalAdapter != null) {
                 boolean isActive = Boolean.TRUE.equals(selectionViewModel.getSelectionModeActive().getValue());
                 songHorizontalAdapter.setSelectionState(isActive, selected);
             }
         });
+    }
+
+    private void updateSelectAllLabel(Set<String> selected) {
+        if (bind == null || songHorizontalAdapter == null) return;
+        List<String> allIds = songHorizontalAdapter.getAllVisibleIds();
+        boolean allSelected = !allIds.isEmpty() && selected.containsAll(allIds);
+        bind.selectionSelectAllTextView.setText(allSelected
+                ? R.string.selection_toolbar_deselect_all
+                : R.string.selection_toolbar_select_all);
+    }
+
+    private void toggleSelectAll() {
+        if (songHorizontalAdapter == null) return;
+        List<String> allIds = songHorizontalAdapter.getAllVisibleIds();
+        Set<String> current = selectionViewModel.currentSelection();
+        if (!allIds.isEmpty() && current.containsAll(allIds)) {
+            selectionViewModel.deselectAll();
+        } else {
+            selectionViewModel.selectAll(allIds);
+        }
     }
 
     private void addSelectedToPlaylist() {
