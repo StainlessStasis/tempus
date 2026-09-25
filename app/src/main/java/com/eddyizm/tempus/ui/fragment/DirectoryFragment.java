@@ -37,15 +37,19 @@ import java.util.concurrent.atomic.AtomicInteger;
 import com.eddyizm.tempus.ui.activity.MainActivity;
 import com.eddyizm.tempus.ui.adapter.MusicDirectoryAdapter;
 import com.eddyizm.tempus.ui.dialog.DownloadDirectoryDialog;
+import com.eddyizm.tempus.ui.dialog.PlaylistChooserDialog;
 import com.eddyizm.tempus.util.Constants;
 import com.eddyizm.tempus.util.DownloadUtil;
 import com.eddyizm.tempus.util.ExternalAudioWriter;
 import com.eddyizm.tempus.util.MappingUtil;
 import com.eddyizm.tempus.util.Preferences;
 import com.eddyizm.tempus.viewmodel.DirectoryViewModel;
+import com.eddyizm.tempus.viewmodel.SelectionViewModel;
 import com.google.common.util.concurrent.ListenableFuture;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @UnstableApi
@@ -55,6 +59,7 @@ public class DirectoryFragment extends Fragment implements ClickCallback {
     private FragmentDirectoryBinding bind;
     private MainActivity activity;
     private DirectoryViewModel directoryViewModel;
+    private SelectionViewModel selectionViewModel;
 
     private MusicDirectoryAdapter musicDirectoryAdapter;
 
@@ -84,6 +89,7 @@ public class DirectoryFragment extends Fragment implements ClickCallback {
         bind = FragmentDirectoryBinding.inflate(inflater, container, false);
         View view = bind.getRoot();
         directoryViewModel = new ViewModelProvider(requireActivity()).get(DirectoryViewModel.class);
+        selectionViewModel = new ViewModelProvider(requireActivity()).get(SelectionViewModel.class);
         directoryRepository = new DirectoryRepository();
 
         Bundle args = getArguments();
@@ -94,6 +100,7 @@ public class DirectoryFragment extends Fragment implements ClickCallback {
 
         initAppBar();
         initDirectoryListView();
+        initSelectionBar();
 
         return view;
     }
@@ -112,6 +119,7 @@ public class DirectoryFragment extends Fragment implements ClickCallback {
 
     @Override
     public void onDestroyView() {
+        selectionViewModel.clearSelection();
         super.onDestroyView();
         bind = null;
     }
@@ -205,6 +213,76 @@ public class DirectoryFragment extends Fragment implements ClickCallback {
     @Override
     public void onMediaLongClick(Bundle bundle) {
         Navigation.findNavController(requireView()).navigate(R.id.songBottomSheetDialog, bundle);
+    }
+
+    @Override
+    public void onSongSelectionToggle(Bundle bundle) {
+        Child song = bundle.getParcelable(Constants.TRACK_OBJECT);
+        if (song != null) {
+            selectionViewModel.toggle(song.getId());
+        }
+    }
+
+    private void initSelectionBar() {
+        bind.selectionCancelTextView.setOnClickListener(v -> selectionViewModel.clearSelection());
+        bind.selectionSelectAllTextView.setOnClickListener(v -> toggleSelectAll());
+        bind.selectionAddToPlaylistTextView.setOnClickListener(v -> addSelectedToPlaylist());
+
+        selectionViewModel.getSelectionModeActive().observe(getViewLifecycleOwner(), active -> {
+            if (bind == null) return;
+            boolean isActive = Boolean.TRUE.equals(active);
+            bind.toolbar.setVisibility(isActive ? View.GONE : View.VISIBLE);
+            bind.selectionToolbar.setVisibility(isActive ? View.VISIBLE : View.GONE);
+            if (musicDirectoryAdapter != null) {
+                musicDirectoryAdapter.setSelectionState(isActive, selectionViewModel.currentSelection());
+            }
+        });
+
+        selectionViewModel.getSelectedIds().observe(getViewLifecycleOwner(), ids -> {
+            if (bind == null) return;
+            LinkedHashSet<String> selected = ids != null ? ids : new LinkedHashSet<>();
+            bind.selectionCountTextView.setText(getString(R.string.selection_toolbar_count, selected.size()));
+            updateSelectAllLabel(selected);
+            if (musicDirectoryAdapter != null) {
+                boolean isActive = Boolean.TRUE.equals(selectionViewModel.getSelectionModeActive().getValue());
+                musicDirectoryAdapter.setSelectionState(isActive, selected);
+            }
+        });
+    }
+
+    private void updateSelectAllLabel(Set<String> selected) {
+        if (bind == null || musicDirectoryAdapter == null) return;
+        List<String> allIds = musicDirectoryAdapter.getAllVisibleIds();
+        boolean allSelected = !allIds.isEmpty() && selected.containsAll(allIds);
+        bind.selectionSelectAllTextView.setText(allSelected
+                ? R.string.selection_toolbar_deselect_all
+                : R.string.selection_toolbar_select_all);
+    }
+
+    private void toggleSelectAll() {
+        if (musicDirectoryAdapter == null) return;
+        List<String> allIds = musicDirectoryAdapter.getAllVisibleIds();
+        Set<String> current = selectionViewModel.currentSelection();
+        if (!allIds.isEmpty() && current.containsAll(allIds)) {
+            selectionViewModel.deselectAll();
+        } else {
+            selectionViewModel.selectAll(allIds);
+        }
+    }
+
+    private void addSelectedToPlaylist() {
+        if (musicDirectoryAdapter == null) return;
+        List<Child> songs = musicDirectoryAdapter.getItemsByIds(selectionViewModel.currentSelection());
+        if (songs.isEmpty()) return;
+
+        Bundle bundle = new Bundle();
+        bundle.putParcelableArrayList(Constants.TRACKS_OBJECT, new ArrayList<>(songs));
+
+        PlaylistChooserDialog dialog = new PlaylistChooserDialog();
+        dialog.setArguments(bundle);
+        dialog.show(requireActivity().getSupportFragmentManager(), null);
+
+        selectionViewModel.clearSelection();
     }
 
     @Override

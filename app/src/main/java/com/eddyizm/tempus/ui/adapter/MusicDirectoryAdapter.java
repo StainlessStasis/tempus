@@ -18,12 +18,16 @@ import com.eddyizm.tempus.util.Constants;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 @UnstableApi
 public class MusicDirectoryAdapter extends RecyclerView.Adapter<MusicDirectoryAdapter.ViewHolder> {
     private final ClickCallback click;
 
     private List<Child> children;
+
+    private boolean selectionMode = false;
+    private Set<String> selectedIds = Collections.emptySet();
 
     public MusicDirectoryAdapter(ClickCallback click) {
         this.click = click;
@@ -54,6 +58,10 @@ public class MusicDirectoryAdapter extends RecyclerView.Adapter<MusicDirectoryAd
 
         holder.item.musicDirectoryMoreButton.setVisibility(child.isDir() ? View.VISIBLE : View.INVISIBLE);
         holder.item.musicDirectoryPlayButton.setVisibility(child.isDir() ? View.VISIBLE : View.INVISIBLE);
+
+        boolean showCheckbox = selectionMode && !child.isDir();
+        holder.item.selectionCheckbox.setVisibility(showCheckbox ? View.VISIBLE : View.GONE);
+        holder.item.selectionCheckbox.setChecked(showCheckbox && selectedIds.contains(child.getId()));
     }
 
     @Override
@@ -63,7 +71,7 @@ public class MusicDirectoryAdapter extends RecyclerView.Adapter<MusicDirectoryAd
 
     public void setItems(List<Child> children) {
         if (children != null) {
-           List<Child> sorted = new ArrayList<>(children);
+            List<Child> sorted = new ArrayList<>(children);
             sorted.sort((c1, c2) -> {
                 if (c1.isDir() && c2.isDir()) {
                     String t1 = c1.getTitle() != null ? c1.getTitle() : "";
@@ -82,6 +90,36 @@ public class MusicDirectoryAdapter extends RecyclerView.Adapter<MusicDirectoryAd
             this.children = Collections.emptyList();
         }
         notifyDataSetChanged();
+    }
+
+    /** Pushed in by the observing fragment whenever SelectionViewModel's state changes. */
+    public void setSelectionState(boolean active, Set<String> selectedIds) {
+        this.selectionMode = active;
+        this.selectedIds = selectedIds != null ? selectedIds : Collections.emptySet();
+        notifyDataSetChanged();
+    }
+
+    /** Resolves selected song ids back to Child objects, for "Add to playlist". Folders are never selectable, so this only ever matches songs. */
+    public List<Child> getItemsByIds(Set<String> ids) {
+        List<Child> result = new ArrayList<>();
+        if (ids == null || ids.isEmpty()) return result;
+        for (Child child : children) {
+            if (!child.isDir() && ids.contains(child.getId())) {
+                result.add(child);
+            }
+        }
+        return result;
+    }
+
+    /** Every song id currently visible in this folder (folders themselves excluded), for "Select all". */
+    public List<String> getAllVisibleIds() {
+        List<String> ids = new ArrayList<>();
+        for (Child child : children) {
+            if (!child.isDir()) {
+                ids.add(child.getId());
+            }
+        }
+        return ids;
     }
 
     public class ViewHolder extends RecyclerView.ViewHolder {
@@ -104,14 +142,23 @@ public class MusicDirectoryAdapter extends RecyclerView.Adapter<MusicDirectoryAd
         public void onClick() {
             Bundle bundle = new Bundle();
 
-            if (children.get(getBindingAdapterPosition()).isDir()) {
-                bundle.putString(Constants.MUSIC_DIRECTORY_ID, children.get(getBindingAdapterPosition()).getId());
+            Child tapped = children.get(getBindingAdapterPosition());
+
+            if (tapped.isDir()) {
+                bundle.putString(Constants.MUSIC_DIRECTORY_ID, tapped.getId());
                 click.onMusicDirectoryClick(bundle);
-            } else {
-                bundle.putParcelableArrayList(Constants.TRACKS_OBJECT, new ArrayList<>(children));
-                bundle.putInt(Constants.ITEM_POSITION, getBindingAdapterPosition());
-                click.onMediaClick(bundle);
+                return;
             }
+
+            if (selectionMode) {
+                bundle.putParcelable(Constants.TRACK_OBJECT, tapped);
+                click.onSongSelectionToggle(bundle);
+                return;
+            }
+
+            bundle.putParcelableArrayList(Constants.TRACKS_OBJECT, new ArrayList<>(children));
+            bundle.putInt(Constants.ITEM_POSITION, getBindingAdapterPosition());
+            click.onMediaClick(bundle);
         }
 
         private boolean onLongClick() {
