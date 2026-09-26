@@ -8,6 +8,7 @@ import androidx.lifecycle.LiveData;
 import androidx.media3.common.util.UnstableApi;
 
 import com.eddyizm.tempus.model.RecentSearch;
+import com.eddyizm.tempus.repository.PlaylistRepository;
 import com.eddyizm.tempus.repository.SearchingRepository;
 import com.eddyizm.tempus.subsonic.models.SearchResult2;
 import com.eddyizm.tempus.subsonic.models.SearchResult3;
@@ -15,18 +16,22 @@ import com.eddyizm.tempus.ui.fragment.SearchFragment;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
+@UnstableApi
 public class SearchViewModel extends AndroidViewModel {
     private static final String TAG = "SearchViewModel";
 
     private String query = "";
 
     private final SearchingRepository searchingRepository;
+    private final PlaylistRepository playlistRepository;
 
     public SearchViewModel(@NonNull Application application) {
         super(application);
 
         searchingRepository = new SearchingRepository();
+        playlistRepository = new PlaylistRepository();
     }
 
     public String getQuery() {
@@ -67,5 +72,10 @@ public class SearchViewModel extends AndroidViewModel {
         suggestions.addAll(searchingRepository.getRecentSearchSuggestion());
 
         return suggestions;
+    }
+
+    /** Fetched fresh (not cached here) each time it's called; the fragment decides when a refetch is worth it. */
+    public LiveData<Set<String>> getAllPlaylistSongIds() {
+        return playlistRepository.getAllPlaylistSongIds();
     }
 }

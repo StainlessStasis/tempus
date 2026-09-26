@@ -101,6 +101,15 @@
                     android:paddingEnd="16dp"
                     android:text="@string/search_title_song" />
 
+                <com.google.android.material.chip.ChipGroup
+                    android:id="@+id/search_song_filter_chip_group"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="16dp"
+                    android:paddingTop="8dp"
+                    android:paddingEnd="16dp"
+                    app:singleSelection="false" />
+
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/search_result_tracks_recycler_view"
                     android:layout_width="match_parent"

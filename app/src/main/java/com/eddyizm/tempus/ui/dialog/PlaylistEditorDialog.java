@@ -154,7 +154,9 @@ public class PlaylistEditorDialog extends DialogFragment {
             });
         });
 
-        bind.playlistShareButton.setVisibility(Preferences.isSharingEnabled() ? View.VISIBLE : View.GONE);
+        bind.playlistShareButton.setVisibility(
+                Preferences.isSharingEnabled() && playlistEditorViewModel.getPlaylistToEdit() != null
+                        ? View.VISIBLE : View.GONE);
     }
 
     private boolean validateInput() {

@@ -9,6 +9,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -26,6 +27,7 @@ import com.eddyizm.tempus.helper.recyclerview.CustomLinearSnapHelper;
 import com.eddyizm.tempus.interfaces.ClickCallback;
 import com.eddyizm.tempus.service.MediaManager;
 import com.eddyizm.tempus.service.MediaService;
+import com.eddyizm.tempus.subsonic.models.Child;
 import com.eddyizm.tempus.subsonic.models.Playlist;
 import com.eddyizm.tempus.ui.activity.MainActivity;
 import com.eddyizm.tempus.ui.adapter.AlbumAdapter;
@@ -36,10 +38,14 @@ import com.eddyizm.tempus.util.Constants;
 import com.eddyizm.tempus.viewmodel.PlaybackViewModel;
 import com.eddyizm.tempus.viewmodel.SearchViewModel;
 import com.eddyizm.tempus.subsonic.models.PlaylistWithSongs;
+import com.google.android.material.chip.Chip;
 import com.google.common.util.concurrent.ListenableFuture;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @UnstableApi
 public class SearchFragment extends Fragment implements ClickCallback {
@@ -56,6 +62,12 @@ public class SearchFragment extends Fragment implements ClickCallback {
     private PlaylistHorizontalAdapter playlistHorizontalAdapter;
 
     private ListenableFuture<MediaBrowser> mediaBrowserListenableFuture;
+
+    private List<Child> allSearchedSongs = Collections.emptyList();
+    private final Set<String> selectedGenres = new LinkedHashSet<>();
+    private boolean hideAlreadyInPlaylist = false;
+    private Set<String> songsInAnyPlaylist; // null until first loaded
+    private Chip notInPlaylistChip;
 
     @Nullable
     @Override
@@ -137,6 +149,77 @@ public class SearchFragment extends Fragment implements ClickCallback {
 
         playlistHorizontalAdapter = new PlaylistHorizontalAdapter(this);
         bind.allsongsview.setAdapter(playlistHorizontalAdapter);
+
+        setupSongFilterChips();
+    }
+
+    private void setupSongFilterChips() {
+        notInPlaylistChip = (Chip) getLayoutInflater().inflate(R.layout.chip_search_filter_genre, null, false);
+        notInPlaylistChip.setText(R.string.search_filter_not_in_playlist);
+        notInPlaylistChip.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            hideAlreadyInPlaylist = isChecked;
+            if (isChecked && songsInAnyPlaylist == null) {
+                loadPlaylistSongIdsThenApply();
+            } else {
+                applySongFilters();
+            }
+        });
+    }
+
+    private void loadPlaylistSongIdsThenApply() {
+        Toast.makeText(requireContext(), R.string.search_filter_loading_playlists, Toast.LENGTH_SHORT).show();
+        searchViewModel.getAllPlaylistSongIds().observe(getViewLifecycleOwner(), ids -> {
+            songsInAnyPlaylist = ids != null ? ids : Collections.emptySet();
+            applySongFilters();
+        });
+    }
+
+    /**
+     * Rebuilds the genre chips from whatever songs the current search actually returned — not the
+     * full library genre list — so there's never a chip that would match zero results. Genre
+     * selections and the not-in-playlist toggle both persist across a new search within this
+     * screen visit (lost on rotation, since this state lives here rather than in the ViewModel).
+     */
+    private void rebuildGenreChips() {
+        if (bind == null) return;
+
+        bind.searchSongFilterChipGroup.removeAllViews();
+        bind.searchSongFilterChipGroup.addView(notInPlaylistChip);
+        notInPlaylistChip.setChecked(hideAlreadyInPlaylist);
+
+        Set<String> genresPresent = new LinkedHashSet<>();
+        for (Child song : allSearchedSongs) {
+            if (song.getGenre() != null && !song.getGenre().isEmpty()) {
+                genresPresent.add(song.getGenre());
+            }
+        }
+        selectedGenres.retainAll(genresPresent);
+
+        for (String genre : genresPresent) {
+            Chip chip = (Chip) getLayoutInflater().inflate(R.layout.chip_search_filter_genre, null, false);
+            chip.setText(genre);
+            chip.setChecked(selectedGenres.contains(genre));
+            chip.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                if (isChecked) selectedGenres.add(genre);
+                else selectedGenres.remove(genre);
+                applySongFilters();
+            });
+            bind.searchSongFilterChipGroup.addView(chip);
+        }
+
+        bind.searchSongFilterChipGroup.setVisibility(allSearchedSongs.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
+    private void applySongFilters() {
+        if (bind == null) return;
+
+        List<Child> filtered = new ArrayList<>();
+        for (Child song : allSearchedSongs) {
+            if (!selectedGenres.isEmpty() && !selectedGenres.contains(song.getGenre())) continue;
+            if (hideAlreadyInPlaylist && songsInAnyPlaylist != null && songsInAnyPlaylist.contains(song.getId())) continue;
+            filtered.add(song);
+        }
+        songHorizontalAdapter.setItems(filtered);
     }
 
     private void initSearchView() {
@@ -268,9 +351,13 @@ public class SearchFragment extends Fragment implements ClickCallback {
 
                 if (result.getSongs() != null) {
                     bind.searchSongSector.setVisibility(!result.getSongs().isEmpty() ? View.VISIBLE : View.GONE);
-                    songHorizontalAdapter.setItems(result.getSongs());
+                    allSearchedSongs = result.getSongs();
+                    rebuildGenreChips();
+                    applySongFilters();
                     sectionsThatMatchedTheQuery+=1;
                 } else {
+                    allSearchedSongs = Collections.emptyList();
+                    rebuildGenreChips();
                     songHorizontalAdapter.setItems(Collections.emptyList());
                     bind.searchSongSector.setVisibility(View.GONE);
                 }

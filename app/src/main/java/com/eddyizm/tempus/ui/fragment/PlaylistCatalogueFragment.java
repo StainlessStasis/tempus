@@ -28,8 +28,11 @@ import com.eddyizm.tempus.databinding.FragmentPlaylistCatalogueBinding;
 import com.eddyizm.tempus.interfaces.ClickCallback;
 import com.eddyizm.tempus.ui.activity.MainActivity;
 import com.eddyizm.tempus.ui.adapter.PlaylistHorizontalAdapter;
+import com.eddyizm.tempus.ui.dialog.PlaylistEditorDialog;
 import com.eddyizm.tempus.util.Constants;
 import com.eddyizm.tempus.viewmodel.PlaylistCatalogueViewModel;
+
+import java.util.ArrayList;
 
 @UnstableApi
 public class PlaylistCatalogueFragment extends Fragment implements ClickCallback {
@@ -113,7 +116,7 @@ public class PlaylistCatalogueFragment extends Fragment implements ClickCallback
             if (playlists != null) {
                 android.util.Log.d("TempusLog", "UI Update: Received " + playlists.size() + " items");
                 playlistHorizontalAdapter.setItems(playlists);
-                playlistHorizontalAdapter.notifyDataSetChanged(); 
+                playlistHorizontalAdapter.notifyDataSetChanged();
             }
         });
     }
@@ -134,6 +137,14 @@ public class PlaylistCatalogueFragment extends Fragment implements ClickCallback
         });
 
         bind.playlistListSortImageView.setOnClickListener(view -> showPopupMenu(view, R.menu.sort_playlist_popup_menu));
+
+        bind.playlistNewImageView.setOnClickListener(view -> {
+            Bundle bundle = new Bundle();
+            bundle.putParcelableArrayList(Constants.TRACKS_OBJECT, new ArrayList<>());
+            PlaylistEditorDialog dialog = new PlaylistEditorDialog(null);
+            dialog.setArguments(bundle);
+            dialog.show(requireActivity().getSupportFragmentManager(), null);
+        });
     }
 
     @Override

@@ -30,6 +30,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -96,6 +97,77 @@ public class PlaylistRepository {
                         // OFFLINE MILESTONE: Future home of the "Server unreachable, falling back to cache" Toast
                     }
                 });
+    }
+
+    /**
+     * Fetches every playlist's contents fresh from the server and unions their song ids, for a
+     * "not already in any playlist" filter elsewhere. This deliberately does not use
+     * getPlaylistSongs()/the local playlist_song cache: that cache is only populated for playlists
+     * someone has actually opened, so it can under-report here in a way that would produce false
+     * negatives (a song silently treated as "not in any playlist" when it really is, just in a
+     * playlist nobody has viewed yet). A playlist that fails to load is left out of the result
+     * rather than blocking the whole aggregate indefinitely.
+     */
+    public MutableLiveData<Set<String>> getAllPlaylistSongIds() {
+        MutableLiveData<Set<String>> result = new MutableLiveData<>();
+
+        App.getSubsonicClientInstance(false)
+                .getPlaylistClient()
+                .getPlaylists()
+                .enqueue(new Callback<ApiResponse>() {
+                    @Override
+                    public void onResponse(@NonNull Call<ApiResponse> call, @NonNull Response<ApiResponse> response) {
+                        List<Playlist> playlists = null;
+                        if (response.isSuccessful() && response.body() != null && response.body().getSubsonicResponse().getPlaylists() != null) {
+                            playlists = response.body().getSubsonicResponse().getPlaylists().getPlaylists();
+                        }
+                        if (playlists == null || playlists.isEmpty()) {
+                            result.postValue(Collections.emptySet());
+                            return;
+                        }
+
+                        Set<String> combined = Collections.synchronizedSet(new HashSet<>());
+                        AtomicInteger remaining = new AtomicInteger(playlists.size());
+
+                        for (Playlist playlist : playlists) {
+                            App.getSubsonicClientInstance(false)
+                                    .getPlaylistClient()
+                                    .getPlaylist(playlist.getId())
+                                    .enqueue(new Callback<ApiResponse>() {
+                                        @Override
+                                        public void onResponse(@NonNull Call<ApiResponse> call, @NonNull Response<ApiResponse> response) {
+                                            if (response.isSuccessful() && response.body() != null) {
+                                                SubsonicResponse sr = response.body().getSubsonicResponse();
+                                                if (sr.getPlaylist() != null && sr.getPlaylist().getEntries() != null) {
+                                                    for (Child song : sr.getPlaylist().getEntries()) {
+                                                        combined.add(song.getId());
+                                                    }
+                                                }
+                                            }
+                                            finish();
+                                        }
+
+                                        @Override
+                                        public void onFailure(@NonNull Call<ApiResponse> call, @NonNull Throwable t) {
+                                            finish();
+                                        }
+
+                                        private void finish() {
+                                            if (remaining.decrementAndGet() == 0) {
+                                                result.postValue(combined);
+                                            }
+                                        }
+                                    });
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(@NonNull Call<ApiResponse> call, @NonNull Throwable t) {
+                        result.postValue(Collections.emptySet());
+                    }
+                });
+
+        return result;
     }
 
     @OptIn(markerClass = UnstableApi.class)
