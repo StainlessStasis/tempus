@@ -665,6 +665,11 @@
     <string name="playlist_removed_songs_toast">Removed %1$d song(s) from playlist</string>
     <string name="playlist_error_write_in_progress">Still working on the last change — try again in a moment</string>
     <string name="song_list_page_all_songs">All songs</string>
+    <string name="song_list_filter_genre_chip_default">Genre</string>
+    <string name="song_list_filter_genre_chip_count">%1$d genres</string>
+    <string name="song_list_filter_genre_dialog_title">Filter by genre</string>
+    <string name="song_list_filter_genre_dialog_apply">Apply</string>
+    <string name="song_list_filter_genre_dialog_cancel">Cancel</string>
     <string name="song_list_page_downloaded">Downloaded</string>
     <string name="song_list_page_most_played">Most played tracks</string>
     <string name="song_list_page_recently_added">Recently added tracks</string>

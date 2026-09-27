@@ -18,6 +18,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
 import androidx.core.view.ViewCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.LifecycleOwner;
@@ -68,10 +69,12 @@ public class SongListPageFragment extends Fragment implements ClickCallback {
     private boolean isLoading = true;
 
     private List<Child> allSongsForFiltering = Collections.emptyList();
+    private List<String> genresPresent = Collections.emptyList();
     private final Set<String> selectedGenres = new LinkedHashSet<>();
     private boolean hideAlreadyInPlaylist = false;
     private Set<String> songsInAnyPlaylist; // null until first loaded
     private Chip notInPlaylistChip;
+    private Chip genreFilterChip;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -455,6 +458,11 @@ public class SongListPageFragment extends Fragment implements ClickCallback {
                 applySongFilters();
             }
         });
+
+        genreFilterChip = (Chip) getLayoutInflater().inflate(R.layout.chip_search_filter_genre, null, false);
+        genreFilterChip.setCheckable(false);
+        genreFilterChip.setOnClickListener(v -> showGenrePickerDialog());
+        updateGenreFilterChipLabel();
     }
 
     private void loadPlaylistSongIdsThenApply() {
@@ -466,9 +474,11 @@ public class SongListPageFragment extends Fragment implements ClickCallback {
     }
 
     /**
-     * Genre chips are only worth showing when the current list actually spans more than one
-     * genre — a single-genre browse (e.g. from the genre list) would otherwise show one chip
-     * that's always checked and just adds clutter.
+     * A library can easily span dozens of genres, so — unlike the search screen's inline chips,
+     * which only ever deal with the handful of genres present in a typed search's ~20 results —
+     * this can't be one chip per genre without the chip row taking over the screen. Instead,
+     * there's a single "Genre" chip that opens a checklist dialog, and shows a compact summary of
+     * whatever's currently selected.
      */
     private void rebuildGenreChips() {
         if (bind == null) return;
@@ -477,29 +487,53 @@ public class SongListPageFragment extends Fragment implements ClickCallback {
         bind.songListFilterChipGroup.addView(notInPlaylistChip);
         notInPlaylistChip.setChecked(hideAlreadyInPlaylist);
 
-        Set<String> genresPresent = new LinkedHashSet<>();
+        Set<String> genresSet = new LinkedHashSet<>();
         for (Child song : allSongsForFiltering) {
             if (song.getGenre() != null && !song.getGenre().isEmpty()) {
-                genresPresent.add(song.getGenre());
+                genresSet.add(song.getGenre());
             }
         }
-        selectedGenres.retainAll(genresPresent);
+        genresPresent = new ArrayList<>(genresSet);
+        Collections.sort(genresPresent);
+        selectedGenres.retainAll(genresSet);
 
         if (genresPresent.size() > 1) {
-            for (String genre : genresPresent) {
-                Chip chip = (Chip) getLayoutInflater().inflate(R.layout.chip_search_filter_genre, null, false);
-                chip.setText(genre);
-                chip.setChecked(selectedGenres.contains(genre));
-                chip.setOnCheckedChangeListener((buttonView, isChecked) -> {
-                    if (isChecked) selectedGenres.add(genre);
-                    else selectedGenres.remove(genre);
-                    applySongFilters();
-                });
-                bind.songListFilterChipGroup.addView(chip);
-            }
+            bind.songListFilterChipGroup.addView(genreFilterChip);
+            updateGenreFilterChipLabel();
         }
 
         bind.songListFilterChipGroup.setVisibility(allSongsForFiltering.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
+    private void updateGenreFilterChipLabel() {
+        if (genreFilterChip == null) return;
+        if (selectedGenres.isEmpty()) {
+            genreFilterChip.setText(R.string.song_list_filter_genre_chip_default);
+        } else if (selectedGenres.size() == 1) {
+            genreFilterChip.setText(selectedGenres.iterator().next());
+        } else {
+            genreFilterChip.setText(getString(R.string.song_list_filter_genre_chip_count, selectedGenres.size()));
+        }
+    }
+
+    private void showGenrePickerDialog() {
+        boolean[] checked = new boolean[genresPresent.size()];
+        for (int i = 0; i < genresPresent.size(); i++) {
+            checked[i] = selectedGenres.contains(genresPresent.get(i));
+        }
+
+        new AlertDialog.Builder(requireContext())
+                .setTitle(R.string.song_list_filter_genre_dialog_title)
+                .setMultiChoiceItems(genresPresent.toArray(new String[0]), checked, (dialog, which, isChecked) -> {
+                    if (isChecked) selectedGenres.add(genresPresent.get(which));
+                    else selectedGenres.remove(genresPresent.get(which));
+                })
+                .setPositiveButton(R.string.song_list_filter_genre_dialog_apply, (dialog, which) -> {
+                    updateGenreFilterChipLabel();
+                    applySongFilters();
+                })
+                .setNegativeButton(R.string.song_list_filter_genre_dialog_cancel, null)
+                .show();
     }
 
     private void applySongFilters() {
