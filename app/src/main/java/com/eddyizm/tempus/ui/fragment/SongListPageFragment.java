@@ -14,6 +14,7 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.PopupMenu;
 import android.widget.SearchView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -41,6 +42,7 @@ import com.eddyizm.tempus.util.Constants;
 import com.eddyizm.tempus.viewmodel.PlaybackViewModel;
 import com.eddyizm.tempus.viewmodel.SelectionViewModel;
 import com.eddyizm.tempus.viewmodel.SongListPageViewModel;
+import com.google.android.material.chip.Chip;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.ArrayList;
@@ -64,6 +66,12 @@ public class SongListPageFragment extends Fragment implements ClickCallback {
     private ListenableFuture<MediaBrowser> mediaBrowserListenableFuture;
 
     private boolean isLoading = true;
+
+    private List<Child> allSongsForFiltering = Collections.emptyList();
+    private final Set<String> selectedGenres = new LinkedHashSet<>();
+    private boolean hideAlreadyInPlaylist = false;
+    private Set<String> songsInAnyPlaylist; // null until first loaded
+    private Chip notInPlaylistChip;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -172,6 +180,10 @@ public class SongListPageFragment extends Fragment implements ClickCallback {
             songListPageViewModel.title = Constants.MEDIA_FROM_ALBUM;
             songListPageViewModel.toolbarTitle = songListPageViewModel.album.getName();
             bind.pageTitleLabel.setText(songListPageViewModel.album.getName());
+        } else if (args.getString(Constants.MEDIA_ALL_SONGS) != null) {
+            songListPageViewModel.title = Constants.MEDIA_ALL_SONGS;
+            songListPageViewModel.toolbarTitle = getString(R.string.song_list_page_all_songs);
+            bind.pageTitleLabel.setText(R.string.song_list_page_all_songs);
         }
     }
 
@@ -224,10 +236,14 @@ public class SongListPageFragment extends Fragment implements ClickCallback {
         reapplyPlayback();
         songListPageViewModel.getSongList().observe(getViewLifecycleOwner(), songs -> {
             isLoading = false;
-            songHorizontalAdapter.setItems(songs);
+            allSongsForFiltering = songs != null ? songs : Collections.emptyList();
+            rebuildGenreChips();
+            applySongFilters();
             reapplyPlayback();
             setSongListPageSubtitle(songs);
         });
+
+        setupSongFilterChips();
 
         bind.songListRecyclerView.addOnScrollListener(new PaginationScrollListener((LinearLayoutManager) bind.songListRecyclerView.getLayoutManager()) {
             @Override
@@ -428,6 +444,76 @@ public class SongListPageFragment extends Fragment implements ClickCallback {
         selectionViewModel.clearSelection();
     }
 
+    private void setupSongFilterChips() {
+        notInPlaylistChip = (Chip) getLayoutInflater().inflate(R.layout.chip_search_filter_genre, null, false);
+        notInPlaylistChip.setText(R.string.search_filter_not_in_playlist);
+        notInPlaylistChip.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            hideAlreadyInPlaylist = isChecked;
+            if (isChecked && songsInAnyPlaylist == null) {
+                loadPlaylistSongIdsThenApply();
+            } else {
+                applySongFilters();
+            }
+        });
+    }
+
+    private void loadPlaylistSongIdsThenApply() {
+        Toast.makeText(requireContext(), R.string.search_filter_loading_playlists, Toast.LENGTH_SHORT).show();
+        songListPageViewModel.getAllPlaylistSongIds().observe(getViewLifecycleOwner(), ids -> {
+            songsInAnyPlaylist = ids != null ? ids : Collections.emptySet();
+            applySongFilters();
+        });
+    }
+
+    /**
+     * Genre chips are only worth showing when the current list actually spans more than one
+     * genre — a single-genre browse (e.g. from the genre list) would otherwise show one chip
+     * that's always checked and just adds clutter.
+     */
+    private void rebuildGenreChips() {
+        if (bind == null) return;
+
+        bind.songListFilterChipGroup.removeAllViews();
+        bind.songListFilterChipGroup.addView(notInPlaylistChip);
+        notInPlaylistChip.setChecked(hideAlreadyInPlaylist);
+
+        Set<String> genresPresent = new LinkedHashSet<>();
+        for (Child song : allSongsForFiltering) {
+            if (song.getGenre() != null && !song.getGenre().isEmpty()) {
+                genresPresent.add(song.getGenre());
+            }
+        }
+        selectedGenres.retainAll(genresPresent);
+
+        if (genresPresent.size() > 1) {
+            for (String genre : genresPresent) {
+                Chip chip = (Chip) getLayoutInflater().inflate(R.layout.chip_search_filter_genre, null, false);
+                chip.setText(genre);
+                chip.setChecked(selectedGenres.contains(genre));
+                chip.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                    if (isChecked) selectedGenres.add(genre);
+                    else selectedGenres.remove(genre);
+                    applySongFilters();
+                });
+                bind.songListFilterChipGroup.addView(chip);
+            }
+        }
+
+        bind.songListFilterChipGroup.setVisibility(allSongsForFiltering.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
+    private void applySongFilters() {
+        if (bind == null || songHorizontalAdapter == null) return;
+
+        List<Child> filtered = new ArrayList<>();
+        for (Child song : allSongsForFiltering) {
+            if (!selectedGenres.isEmpty() && !selectedGenres.contains(song.getGenre())) continue;
+            if (hideAlreadyInPlaylist && songsInAnyPlaylist != null && songsInAnyPlaylist.contains(song.getId())) continue;
+            filtered.add(song);
+        }
+        songHorizontalAdapter.setItems(filtered);
+    }
+
     private void observePlayback() {
         playbackViewModel.getCurrentSongId().observe(getViewLifecycleOwner(), id -> {
             if (songHorizontalAdapter != null) {
@@ -466,7 +552,9 @@ public class SongListPageFragment extends Fragment implements ClickCallback {
         LifecycleOwner lifecycleOwner = getViewLifecycleOwner();
         songListPageViewModel.getSongList().observe(lifecycleOwner, songs -> {
             isLoading = false;
-            songHorizontalAdapter.setItems(songs);
+            allSongsForFiltering = songs != null ? songs : Collections.emptyList();
+            rebuildGenreChips();
+            applySongFilters();
             reapplyPlayback();
             setSongListPageSubtitle(songs);
         });

@@ -3,6 +3,7 @@ package com.eddyizm.tempus.viewmodel;
 import android.app.Application;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.OptIn;
 import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.media3.common.util.UnstableApi;
@@ -75,6 +76,7 @@ public class SearchViewModel extends AndroidViewModel {
     }
 
     /** Fetched fresh (not cached here) each time it's called; the fragment decides when a refetch is worth it. */
+    @OptIn(markerClass = UnstableApi.class)
     public LiveData<Set<String>> getAllPlaylistSongIds() {
         return playlistRepository.getAllPlaylistSongIds();
     }

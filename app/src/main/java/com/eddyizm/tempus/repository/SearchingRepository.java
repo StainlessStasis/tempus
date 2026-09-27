@@ -135,6 +135,54 @@ public class SearchingRepository {
         return result;
     }
 
+    /**
+     * Fetches every song the server will return for an empty search3 query, paginated until
+     * exhausted. Whether an empty query means "match everything" is up to the server, not this
+     * app — it's the standard trick most Subsonic-API clients use for a "browse all songs"
+     * feature, but it's worth confirming it behaves that way against your specific server.
+     */
+    public MutableLiveData<List<Child>> browseAllSongs() {
+        MutableLiveData<List<Child>> result = new MutableLiveData<>();
+
+        Executors.newSingleThreadExecutor().execute(() -> {
+            List<Child> allSongs = new ArrayList<>();
+            int offset = 0;
+            int limit = 1000;
+            boolean hasMore = true;
+
+            while (hasMore) {
+                try {
+                    Response<ApiResponse> response = App.getSubsonicClientInstance(false)
+                            .getSearchingClient()
+                            .search3("", limit, offset, 0, 0, 0, 0)
+                            .execute();
+
+                    if (response.isSuccessful() && response.body() != null) {
+                        SearchResult3 tmp = response.body().getSubsonicResponse().getSearchResult3();
+                        if (tmp != null && tmp.getSongs() != null && !tmp.getSongs().isEmpty()) {
+                            List<Child> fetchedSongs = tmp.getSongs();
+                            allSongs.addAll(fetchedSongs);
+
+                            offset += fetchedSongs.size();
+                            hasMore = fetchedSongs.size() == limit;
+                        } else {
+                            hasMore = false;
+                        }
+                    } else {
+                        hasMore = false;
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    hasMore = false;
+                }
+            }
+
+            result.postValue(allSongs);
+        });
+
+        return result;
+    }
+
     public MutableLiveData<List<String>> getSuggestions(String query) {
         MutableLiveData<List<String>> suggestions = new MutableLiveData<>();
 

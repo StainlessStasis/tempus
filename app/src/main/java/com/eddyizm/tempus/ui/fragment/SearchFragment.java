@@ -151,6 +151,7 @@ public class SearchFragment extends Fragment implements ClickCallback {
         bind.allsongsview.setAdapter(playlistHorizontalAdapter);
 
         setupSongFilterChips();
+        bind.searchBrowseAllSongsRow.setOnClickListener(v -> browseAllSongs());
     }
 
     private void setupSongFilterChips() {
@@ -306,6 +307,22 @@ public class SearchFragment extends Fragment implements ClickCallback {
                 bind.searchViewSuggestionContainer.addView(view);
             }
         });
+    }
+
+    /**
+     * Navigates away rather than rendering inline: this screen's whole results area is one
+     * NestedScrollView, which forces any RecyclerView inside it to inflate every row at once
+     * instead of recycling — fine at the ~20 results a typed search returns, but it OOMs on a
+     * library-sized list. SongListPageFragment already uses a real top-level RecyclerView (how
+     * genre browsing survives 500+ songs) and already has selection wired up, so this reuses that
+     * instead of trying to make this screen's layout safe for an unbounded list.
+     */
+    private void browseAllSongs() {
+        bind.searchView.hide();
+
+        Bundle bundle = new Bundle();
+        bundle.putString(Constants.MEDIA_ALL_SONGS, Constants.MEDIA_ALL_SONGS);
+        Navigation.findNavController(requireView()).navigate(R.id.songListPageFragment, bundle);
     }
 
     public void search(String query) {

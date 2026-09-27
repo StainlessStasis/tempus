@@ -10,6 +10,8 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
 import com.eddyizm.tempus.repository.ArtistRepository;
+import com.eddyizm.tempus.repository.PlaylistRepository;
+import com.eddyizm.tempus.repository.SearchingRepository;
 import com.eddyizm.tempus.repository.SongRepository;
 import com.eddyizm.tempus.subsonic.models.AlbumID3;
 import com.eddyizm.tempus.subsonic.models.ArtistID3;
@@ -19,10 +21,13 @@ import com.eddyizm.tempus.util.Constants;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 public class SongListPageViewModel extends AndroidViewModel {
     private final SongRepository songRepository;
     private final ArtistRepository artistRepository;
+    private final SearchingRepository searchingRepository;
+    private final PlaylistRepository playlistRepository;
 
     public String title;
     public String toolbarTitle;
@@ -44,6 +49,8 @@ public class SongListPageViewModel extends AndroidViewModel {
 
         songRepository = new SongRepository();
         artistRepository = new ArtistRepository();
+        searchingRepository = new SearchingRepository();
+        playlistRepository = new PlaylistRepository();
     }
 
     public LiveData<List<Child>> getSongList() {
@@ -65,9 +72,17 @@ public class SongListPageViewModel extends AndroidViewModel {
             case Constants.MEDIA_STARRED:
                 songList = songRepository.getStarredSongs(false, -1);
                 break;
+            case Constants.MEDIA_ALL_SONGS:
+                songList = searchingRepository.browseAllSongs();
+                break;
         }
 
         return songList;
+    }
+
+    /** Fetched fresh each time; the fragment decides when a refetch is worth it. */
+    public LiveData<Set<String>> getAllPlaylistSongIds() {
+        return playlistRepository.getAllPlaylistSongIds();
     }
 
     public void getSongsByPage(LifecycleOwner owner) {
@@ -90,6 +105,7 @@ public class SongListPageViewModel extends AndroidViewModel {
             case Constants.MEDIA_BY_GENRES:
             case Constants.MEDIA_BY_YEAR:
             case Constants.MEDIA_STARRED:
+            case Constants.MEDIA_ALL_SONGS:
                 break;
         }
     }
