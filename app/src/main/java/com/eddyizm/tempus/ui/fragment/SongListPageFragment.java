@@ -71,10 +71,12 @@ public class SongListPageFragment extends Fragment implements ClickCallback {
     private List<Child> allSongsForFiltering = Collections.emptyList();
     private List<String> genresPresent = Collections.emptyList();
     private final Set<String> selectedGenres = new LinkedHashSet<>();
+    private final Set<String> excludedGenres = new LinkedHashSet<>();
     private boolean hideAlreadyInPlaylist = false;
     private Set<String> songsInAnyPlaylist; // null until first loaded
     private Chip notInPlaylistChip;
     private Chip genreFilterChip;
+    private Chip excludeGenreFilterChip;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -463,6 +465,11 @@ public class SongListPageFragment extends Fragment implements ClickCallback {
         genreFilterChip.setCheckable(false);
         genreFilterChip.setOnClickListener(v -> showGenrePickerDialog());
         updateGenreFilterChipLabel();
+
+        excludeGenreFilterChip = (Chip) getLayoutInflater().inflate(R.layout.chip_search_filter_genre, null, false);
+        excludeGenreFilterChip.setCheckable(false);
+        excludeGenreFilterChip.setOnClickListener(v -> showExcludeGenrePickerDialog());
+        updateExcludeGenreFilterChipLabel();
     }
 
     private void loadPlaylistSongIdsThenApply() {
@@ -496,10 +503,13 @@ public class SongListPageFragment extends Fragment implements ClickCallback {
         genresPresent = new ArrayList<>(genresSet);
         Collections.sort(genresPresent);
         selectedGenres.retainAll(genresSet);
+        excludedGenres.retainAll(genresSet);
 
         if (genresPresent.size() > 1) {
             bind.songListFilterChipGroup.addView(genreFilterChip);
             updateGenreFilterChipLabel();
+            bind.songListFilterChipGroup.addView(excludeGenreFilterChip);
+            updateExcludeGenreFilterChipLabel();
         }
 
         bind.songListFilterChipGroup.setVisibility(allSongsForFiltering.isEmpty() ? View.GONE : View.VISIBLE);
@@ -513,6 +523,17 @@ public class SongListPageFragment extends Fragment implements ClickCallback {
             genreFilterChip.setText(selectedGenres.iterator().next());
         } else {
             genreFilterChip.setText(getString(R.string.song_list_filter_genre_chip_count, selectedGenres.size()));
+        }
+    }
+
+    private void updateExcludeGenreFilterChipLabel() {
+        if (excludeGenreFilterChip == null) return;
+        if (excludedGenres.isEmpty()) {
+            excludeGenreFilterChip.setText(R.string.song_list_filter_exclude_genre_chip_default);
+        } else if (excludedGenres.size() == 1) {
+            excludeGenreFilterChip.setText(getString(R.string.song_list_filter_exclude_genre_chip_one, excludedGenres.iterator().next()));
+        } else {
+            excludeGenreFilterChip.setText(getString(R.string.song_list_filter_exclude_genre_chip_count, excludedGenres.size()));
         }
     }
 
@@ -536,16 +557,43 @@ public class SongListPageFragment extends Fragment implements ClickCallback {
                 .show();
     }
 
+    private void showExcludeGenrePickerDialog() {
+        boolean[] checked = new boolean[genresPresent.size()];
+        for (int i = 0; i < genresPresent.size(); i++) {
+            checked[i] = excludedGenres.contains(genresPresent.get(i));
+        }
+
+        new AlertDialog.Builder(requireContext())
+                .setTitle(R.string.song_list_filter_exclude_genre_dialog_title)
+                .setMultiChoiceItems(genresPresent.toArray(new String[0]), checked, (dialog, which, isChecked) -> {
+                    if (isChecked) excludedGenres.add(genresPresent.get(which));
+                    else excludedGenres.remove(genresPresent.get(which));
+                })
+                .setPositiveButton(R.string.song_list_filter_genre_dialog_apply, (dialog, which) -> {
+                    updateExcludeGenreFilterChipLabel();
+                    applySongFilters();
+                })
+                .setNegativeButton(R.string.song_list_filter_genre_dialog_cancel, null)
+                .show();
+    }
+
     private void applySongFilters() {
         if (bind == null || songHorizontalAdapter == null) return;
 
         List<Child> filtered = new ArrayList<>();
         for (Child song : allSongsForFiltering) {
             if (!selectedGenres.isEmpty() && !selectedGenres.contains(song.getGenre())) continue;
+            if (!excludedGenres.isEmpty() && excludedGenres.contains(song.getGenre())) continue;
             if (hideAlreadyInPlaylist && songsInAnyPlaylist != null && songsInAnyPlaylist.contains(song.getId())) continue;
             filtered.add(song);
         }
         songHorizontalAdapter.setItems(filtered);
+
+        if (Constants.MEDIA_ALL_SONGS.equals(songListPageViewModel.title)) {
+            bind.pageSubtitleLabel.setText(filtered.size() == allSongsForFiltering.size()
+                    ? getString(R.string.generic_list_page_count, allSongsForFiltering.size())
+                    : getString(R.string.song_list_page_filtered_count, filtered.size(), allSongsForFiltering.size()));
+        }
     }
 
     private void observePlayback() {
